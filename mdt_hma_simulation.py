@@ -264,6 +264,87 @@ def hash_pairs(org, ips, names):
     return out
 
 
+def print_summary(out):
+    """Compact, screenshot-friendly summary of the key results."""
+    line = "=" * 92
+    print("\n" + line)
+    print("MDT-HMA SIMULATION SUMMARY  (1,500 devices, 6 data centers, 3 simulated days, "
+          f"{N_SEEDS} seeds, mean)")
+    print(line)
+
+    print("\n[1] Effect of thresholds and confirmation")
+    print(f"{'Profile':<44}{'Alerts/day':>11}{'False/day':>10}{'Precision':>10}{'Recall':>8}{'Delay(min)':>11}")
+    for name, d in out['configs'].items():
+        print(f"{name:<44}{d['alerts_per_day'][0]:>11.1f}{d['fp_per_day'][0]:>10.2f}"
+              f"{d['precision'][0]:>10.3f}{d['recall_all'][0]:>8.3f}{d['mttd_act'][0]:>11.2f}")
+    print("Recall = share of ALL injected faults detected. Delay = mean time to detect actionable faults.")
+
+    print("\n[2] Effect of polling interval (profile B)")
+    print(f"{'Interval':<12}{'Alerts/day':>11}{'False/day':>10}{'Recall(act)':>12}{'Delay(min)':>11}")
+    for k, d in out['sensitivity'].items():
+        print(f"{str(k) + ' min':<12}{d['alerts_per_day'][0]:>11.1f}{d['fp_per_day'][0]:>10.2f}"
+              f"{d['recall_act'][0]:>12.2f}{d['mttd_act'][0]:>11.2f}")
+
+    print("\n[3] Automated vs manual monitoring (actionable faults)")
+    b = out['configs']['B  Case-study thresholds, 3-poll confirm']
+    triage_h = b['alerts_per_day'][0] * 5 / 60
+    m24, m8 = out['manual']['manual_24h'], out['manual']['manual_8h']
+    print(f"{'Method':<36}{'Recall':>8}{'Delay(min)':>11}{'Staff hours/day':>17}")
+    print(f"{'Manual, one sweep per day':<36}{m24['recall_act'][0]:>8.1%}{m24['mttd_act'][0]:>11.0f}{25:>17.1f}")
+    print(f"{'Manual, sweep every 8 hours':<36}{m8['recall_act'][0]:>8.1%}{m8['mttd_act'][0]:>11.0f}{75:>17.1f}")
+    print(f"{'MDT-HMA, profile B, 1-min polling':<36}{b['recall_act'][0]:>8.1%}{b['mttd_act'][0]:>11.2f}{triage_h:>17.1f}")
+
+    print("\n[4] Merger reconciliation: pairwise vs hash-based")
+    print(f"{'Devices':>8}{'Pairs compared':>16}{'Conflicts':>10}{'Same result':>12}{'Pairwise(s)':>13}{'Hash(s)':>10}{'Speed-up':>10}")
+    for r in out['reconcile']:
+        print(f"{r['n']:>8}{r['pairs']:>16,}{r['naive_found']:>10}{str(r['same']):>12}"
+              f"{r['t_naive']:>13.3f}{r['t_hash']:>10.4f}{r['t_naive'] / max(r['t_hash'], 1e-9):>9.0f}x")
+
+    print("\nFull numbers saved to mdt_hma_results.json")
+    print(f"Total run time: {out['runtime_s']:.1f} s")
+    print(line)
+
+
+def print_summary(out):
+    """Print the key results as neat tables (this is the part to screenshot)."""
+    line = "=" * 98
+    print("\n" + line)
+    print(" MDT-HMA SIMULATION SUMMARY  (1,500 devices, 6 data centers, %d days, mean +/- sd over %d seeds)" % (DAYS, N_SEEDS))
+    print(line)
+
+    def pm(v, d=2):
+        return f"{v[0]:.{d}f} +/- {v[1]:.{d}f}"
+
+    print("\nTABLE 1: Effect of thresholds and confirmation")
+    print(f"{'Profile':<44}{'Alerts/day':>16}{'False/day':>15}{'Precision':>11}{'Recall(all)':>13}{'Recall(act)':>12}{'Delay(min)':>12}")
+    for name, d in out['configs'].items():
+        print(f"{name:<44}{pm(d['alerts_per_day'],1):>16}{pm(d['fp_per_day'],1):>15}"
+              f"{d['precision'][0]:>11.3f}{d['recall_all'][0]:>13.3f}{d['recall_act'][0]:>12.2f}{d['mttd_act'][0]:>12.2f}")
+
+    print("\nTABLE 2: Polling interval (profile B: case-study thresholds, 3-poll confirmation)")
+    print(f"{'Interval':<12}{'Alerts/day':>18}{'False/day':>16}{'Recall(act)':>16}{'Delay(min)':>18}")
+    for k, d in out['sensitivity'].items():
+        print(f"{str(k)+' min':<12}{pm(d['alerts_per_day'],1):>18}{pm(d['fp_per_day'],2):>16}"
+              f"{pm(d['recall_act'],2):>16}{pm(d['mttd_act'],2):>18}")
+
+    print("\nTABLE 3: Automated vs manual monitoring (actionable faults)")
+    print(f"{'Method':<40}{'Recall':>10}{'Delay of caught (min)':>26}{'Staff effort/day':>22}")
+    m24, m8 = out['manual']['manual_24h'], out['manual']['manual_8h']
+    b = out['configs']['B  Case-study thresholds, 3-poll confirm']
+    triage = b['alerts_per_day'][0] * 5 / 60
+    print(f"{'Manual, one sweep per day':<40}{m24['recall_act'][0]*100:>9.1f}%{m24['mttd_act'][0]:>26.0f}{'25.0 person-hours':>22}")
+    print(f"{'Manual, one sweep every 8 hours':<40}{m8['recall_act'][0]*100:>9.1f}%{m8['mttd_act'][0]:>26.0f}{'75.0 person-hours':>22}")
+    print(f"{'MDT-HMA (profile B, 1-min polling)':<40}{b['recall_act'][0]*100:>9.1f}%{b['mttd_act'][0]:>26.2f}{triage:>14.1f} person-hours")
+
+    print("\nTABLE 4: Merger reconciliation (pairwise vs hash-based)")
+    print(f"{'Devices':>8}{'Pairs compared':>16}{'Conflicts':>11}{'Same result':>13}{'Pairwise (s)':>14}{'Hash (s)':>11}{'Speed-up':>10}")
+    for r in out['reconcile']:
+        print(f"{r['n']:>8}{r['pairs']:>16,}{r['naive_found']:>11}{str(r['same']):>13}"
+              f"{r['t_naive']:>14.3f}{r['t_hash']:>11.4f}{r['t_naive']/r['t_hash']:>9.0f}x")
+    print("\nFull numbers saved to mdt_hma_results.json   |   total run time: %.1f s" % out['runtime_s'])
+    print(line)
+
+
 def main():
     t_start = time.time()
     agg = defaultdict(lambda: defaultdict(list))
@@ -326,7 +407,7 @@ def main():
     out['runtime_s'] = time.time() - t_start
     with open('mdt_hma_results.json', 'w') as f:
         json.dump(out, f, indent=1, default=str)
-    print(json.dumps(out, indent=1, default=str))
+    print_summary(out)
 
 
 if __name__ == '__main__':
